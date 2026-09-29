@@ -1,0 +1,354 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------ *
+ * Design tokens
+ * Industrial control-room palette built around a water blue/cyan brand.
+ * Dark mode is a first-class citizen — these screens live in control
+ * rooms that are often dimly lit and run 24/7.
+ * ------------------------------------------------------------------ */
+
+:root {
+  --radius: 0.75rem;
+
+  --background: oklch(0.98 0.004 240);
+  --foreground: oklch(0.21 0.02 250);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.02 250);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.02 250);
+
+  --primary: oklch(0.55 0.15 240);
+  --primary-foreground: oklch(0.99 0 0);
+
+  --secondary: oklch(0.955 0.008 240);
+  --secondary-foreground: oklch(0.27 0.02 250);
+
+  --muted: oklch(0.955 0.008 240);
+  --muted-foreground: oklch(0.53 0.02 250);
+
+  --accent: oklch(0.94 0.02 235);
+  --accent-foreground: oklch(0.3 0.06 245);
+
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --success: oklch(0.6 0.15 152);
+  --success-foreground: oklch(0.99 0 0);
+
+  --warning: oklch(0.72 0.16 75);
+  --warning-foreground: oklch(0.24 0.04 75);
+
+  --info: oklch(0.65 0.13 220);
+  --info-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.9 0.01 245);
+  --input: oklch(0.89 0.01 245);
+  --ring: oklch(0.55 0.15 240);
+
+  --chart-1: oklch(0.55 0.15 240);
+  --chart-2: oklch(0.68 0.13 195);
+  --chart-3: oklch(0.6 0.15 152);
+  --chart-4: oklch(0.72 0.16 75);
+  --chart-5: oklch(0.58 0.22 27);
+
+  --sidebar: oklch(0.995 0.003 240);
+  --sidebar-foreground: oklch(0.27 0.02 250);
+  --sidebar-primary: oklch(0.55 0.15 240);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.945 0.015 240);
+  --sidebar-accent-foreground: oklch(0.3 0.06 245);
+  --sidebar-border: oklch(0.91 0.01 245);
+  --sidebar-ring: oklch(0.55 0.15 240);
+
+  /* Water rendered inside the tank illustration. */
+  --water-top: oklch(0.65 0.16 235);
+  --water-bottom: oklch(0.72 0.13 205);
+}
+
+.dark {
+  --background: oklch(0.18 0.015 250);
+  --foreground: oklch(0.96 0.005 240);
+
+  --card: oklch(0.23 0.018 250);
+  --card-foreground: oklch(0.96 0.005 240);
+
+  --popover: oklch(0.24 0.018 250);
+  --popover-foreground: oklch(0.96 0.005 240);
+
+  --primary: oklch(0.68 0.14 232);
+  --primary-foreground: oklch(0.16 0.02 250);
+
+  --secondary: oklch(0.28 0.018 250);
+  --secondary-foreground: oklch(0.95 0.005 240);
+
+  --muted: oklch(0.28 0.018 250);
+  --muted-foreground: oklch(0.7 0.015 245);
+
+  --accent: oklch(0.32 0.035 240);
+  --accent-foreground: oklch(0.93 0.02 235);
+
+  --destructive: oklch(0.65 0.2 25);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --success: oklch(0.68 0.16 155);
+  --success-foreground: oklch(0.16 0.02 250);
+
+  --warning: oklch(0.78 0.15 78);
+  --warning-foreground: oklch(0.2 0.03 75);
+
+  --info: oklch(0.7 0.12 220);
+  --info-foreground: oklch(0.16 0.02 250);
+
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.68 0.14 232);
+
+  --chart-1: oklch(0.68 0.14 232);
+  --chart-2: oklch(0.75 0.12 195);
+  --chart-3: oklch(0.68 0.16 155);
+  --chart-4: oklch(0.78 0.15 78);
+  --chart-5: oklch(0.65 0.2 25);
+
+  --sidebar: oklch(0.21 0.017 250);
+  --sidebar-foreground: oklch(0.95 0.005 240);
+  --sidebar-primary: oklch(0.68 0.14 232);
+  --sidebar-primary-foreground: oklch(0.16 0.02 250);
+  --sidebar-accent: oklch(0.3 0.03 240);
+  --sidebar-accent-foreground: oklch(0.95 0.02 235);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.68 0.14 232);
+
+  --water-top: oklch(0.6 0.16 240);
+  --water-bottom: oklch(0.66 0.13 205);
+}
+
+@theme inline {
+  --font-sans: "Cairo", "Segoe UI", "Tahoma", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", "Consolas", monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    /* Arabic numerals stay latin so meter readings line up in tables. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Number inputs in a control panel should never be scroll-wheel
+     adjustable — an accidental scroll must not change a fill target. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+    background-clip: content-box;
+  }
+}
+
+@layer utilities {
+  /* Soft elevation that reads well on both themes — Tailwind's default
+     shadows disappear against a dark background. */
+  .elevate {
+    box-shadow:
+      0 1px 2px oklch(0 0 0 / 0.04),
+      0 4px 16px oklch(0 0 0 / 0.06);
+  }
+  .dark .elevate {
+    box-shadow:
+      0 1px 2px oklch(0 0 0 / 0.3),
+      0 4px 16px oklch(0 0 0 / 0.25);
+  }
+
+  .elevate-lg {
+    box-shadow:
+      0 2px 4px oklch(0 0 0 / 0.05),
+      0 12px 32px oklch(0 0 0 / 0.1);
+  }
+  .dark .elevate-lg {
+    box-shadow:
+      0 2px 4px oklch(0 0 0 / 0.35),
+      0 12px 32px oklch(0 0 0 / 0.35);
+  }
+
+  .animate-in-up {
+    animation: in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .pulse-ring::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    background: currentColor;
+  }
+}
+
+@keyframes in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Print — the history and reports screens are printed as shift logs.
+ * ------------------------------------------------------------------ */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .no-print,
+  [data-slot="sidebar-wrapper"] > [data-slot="sidebar"],
+  [data-sidebar="sidebar"] {
+    display: none !important;
+  }
+
+  .print-area {
+    position: static !important;
+    overflow: visible !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 11px !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #999 !important;
+    padding: 4px 6px !important;
+    color: #000 !important;
+    background: transparent !important;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
+  }
+}
+
+.print-only {
+  display: none;
+}
