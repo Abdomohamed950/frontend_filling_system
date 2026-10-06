@@ -328,8 +328,7 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
         toast.warning("امسح الباركود لبدء الدورة.");
         return;
       }
-      handleFieldChange("receiptNumber", "");
-      startCycle();
+      startCycle(String(receiptNumber).trim());
       return;
     }
 
@@ -409,13 +408,16 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
     toast.success(`تم إرسال أمر البدء اليدوي إلى ${name}.`);
   };
 
-  const startCycle = () => {
+  const startCycle = (receiptNumber) => {
     if (reportedOnline === false) {
       toast.error(`المنفذ ${name} معطّل حاليًا حسب بوابة التشغيل.`);
       return;
     }
     setCycle(null);
-    socket.emit("dev_start_cycle", { port: name });
+    socket.emit("dev_start_cycle", {
+      port: name,
+      ...(receiptNumber ? { receipt_number: receiptNumber } : {}),
+    });
   };
 
   const stopFilling = () => {
@@ -508,7 +510,7 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
       <div className="flex shrink-0 gap-2" dir="rtl">
         {devEnabled && !busy && !checkingReceipt && !cycleRunning ? (
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <Button type="button" className="w-full" onClick={startCycle}>
+            <Button type="button" className="w-full" onClick={() => startCycle()}>
               <Play className="size-4" />
               ابدأ الدورة
             </Button>
