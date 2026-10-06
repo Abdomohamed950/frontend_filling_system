@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   Cable,
   Gauge,
+  Copy,
   Pencil,
   Plus,
   SatelliteDish,
@@ -40,6 +41,10 @@ const BAUD_RATES = [4800, 9600, 19200, 38400, 57600, 115200];
  */
 const VALVE_TYPES = ["valve", "bump", "valve and bump"];
 
+/** The server also accepts the `pump` spellings and stores them as `bump`. */
+const VALVE_ALIASES = { pump: "bump", "valve and pump": "valve and bump" };
+const normalizeValve = (type) => VALVE_ALIASES[type] ?? type;
+
 /** `mode` is guarded by a CHECK constraint; only `modbus` gets a conf today. */
 const MODES = [
   { value: "modbus", label: "modbus" },
@@ -47,12 +52,15 @@ const MODES = [
   { value: "milli ampere", label: "milli ampere" },
 ];
 
-/**
- * Serial framing passed straight to the firmware. Confirm the middle two
- * against the device before relying on them — the service documents the
- * range by its endpoints only.
- */
-const SERIAL_FRAMES = ["SERIAL_8N1", "SERIAL_8N2", "SERIAL_8E1", "SERIAL_8E2"];
+/** Serial framings the server accepts for modbus (CONF.md §3). */
+const SERIAL_FRAMES = [
+  "SERIAL_8N1",
+  "SERIAL_8N2",
+  "SERIAL_8O1",
+  "SERIAL_8O2",
+  "SERIAL_8E1",
+  "SERIAL_8E2",
+];
 
 /**
  * Three distinct byte orders reach the firmware. The stored value is
@@ -81,7 +89,7 @@ const CLOSE_TIME_FIELDS = [
   { name: "firstCloseTime", label: "مدة الغلق الأول" },
   { name: "secondCloseTime", label: "مدة الغلق الثاني" },
   { name: "pidTime", label: "مدة الغلق الأخير" },
-  { name: "addedTime", label: "وقت إضافي على الغلق الأخير" },
+  { name: "addedTime", label: "زمن إضافي" },
 ];
 
 /**
@@ -93,6 +101,38 @@ const CLOSE_LAG_FIELDS = [
   { name: "firstCloseLag", label: "كمية بدء الغلق الأول" },
   { name: "SecondCloseLag", label: "كمية بدء الغلق الثاني" },
 ];
+
+/** Pulse-only: the last close stage (`thirdCloseLag` on the device). */
+const THIRD_LAG_FIELD = { name: "thirdCloseLag", label: "كمية بدء الغلق الأخير" };
+
+/**
+ * Pulse-mode constraints from DEV_MODE.md §3. Returns an Arabic message for
+ * the first violation, or "" when the form is safe to save.
+ */
+function pulseProblem(form) {
+  if (form.mode !== "pulse") return "";
+  if (!(Number(form.litersPerPulse) > 0)) {
+    return "حجم النبضة (لتر/نبضة) لازم يكون أكبر من صفر، وإلا العداد مش هيتحرك.";
+  }
+  const nonNegative = [
+    "firstCloseTime",
+    "secondCloseTime",
+    "pidTime",
+    "addedTime",
+    "firstCloseLag",
+    "SecondCloseLag",
+    "thirdCloseLag",
+  ];
+  if (nonNegative.some((k) => form[k] === "" || !(Number(form[k]) >= 0))) {
+    return "كل أزمنة وكميات الغلق لازم تكون أرقام ≥ 0.";
+  }
+  if (!(Number(form.firstCloseLag) >= Number(form.SecondCloseLag) &&
+        Number(form.SecondCloseLag) >= Number(form.thirdCloseLag))) {
+    return "ترتيب كميات الغلق لازم يكون: الأول ≥ الثاني ≥ الأخير ≥ 0.";
+  }
+  if (!VALVE_TYPES.includes(normalizeValve(form.valveType))) return "نوع الصمام غير مدعوم.";
+  return "";
+}
 
 /** One SCADA channel number per field a port fill can report or receive. */
 const CHANNEL_FIELDS = [
@@ -112,6 +152,27 @@ const EMPTY_CHANNELS = Object.fromEntries(CHANNEL_FIELDS.map((field) => [field.n
 const SELECT_CLASS =
   "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30";
 
+/** "port1" → "port2" (first free number); a name without digits gets "-copy". */
+function suggestCopyName(name, existing) {
+  const taken = new Set(existing.map((n) => String(n).toLowerCase()));
+  const match = /^(.*?)(\d+)$/.exec(name);
+  if (!match) return taken.has(`${name}-copy`.toLowerCase()) ? "" : `${name}-copy`;
+  const [, prefix, digits] = match;
+  for (let n = Number(digits) + 1; n < Number(digits) + 1000; n++) {
+    const candidate = `${prefix}${String(n).padStart(digits.length, "0")}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+  return "";
+}
+
+/** Why the server did not reset the device after a save (CONF.md §1). */
+const DEVICE_REASONS = {
+  busy: "المنفذ بيعبّي حاليًا فماتعملش reset. أعد تشغيل الجهاز يدويًا بعد التعبئة لتطبيق الإعدادات.",
+  offline: "الجهاز غير متصل — هياخد الإعدادات الجديدة أول ما يشتغل.",
+  renamed: "اسم المنفذ اتغيّر — غيّر الاسم على الجهاز نفسه (صفحة إعداداته) لتطبيق الإعدادات.",
+  mqtt_down: "السيرفر غير متصل بالـ broker — هتتطبق الإعدادات بعد رجوعه.",
+};
+
 const EMPTY_FORM = {
   name: "",
   mode: "modbus",
@@ -127,6 +188,8 @@ const EMPTY_FORM = {
   secondCloseTime: "",
   firstCloseLag: "",
   SecondCloseLag: "",
+  thirdCloseLag: "",
+  litersPerPulse: "",
   pidTime: "",
   addedTime: "",
 };
@@ -140,6 +203,8 @@ function Ports_settings_page() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  // Source port being copied; the dialog opens in create mode, prefilled.
+  const [duplicating, setDuplicating] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [scadaTarget, setScadaTarget] = useState(null);
@@ -161,10 +226,18 @@ function Ports_settings_page() {
 
   const openCreate = () => {
     setEditing(null);
+    setDuplicating(null);
+    setDialogOpen(true);
+  };
+
+  const openDuplicate = (port) => {
+    setEditing(null);
+    setDuplicating(port);
     setDialogOpen(true);
   };
 
   const openEdit = (port) => {
+    setDuplicating(null);
     setEditing(port);
     setDialogOpen(true);
   };
@@ -172,8 +245,13 @@ function Ports_settings_page() {
   const handleSubmit = async (formData) => {
     try {
       if (editing) {
-        await api.put(`/ports/${editing.id}`, formData);
+        const res = await api.put(`/ports/${editing.id}`, formData);
+        const device = res?.data?.device;
         toast.success(`تم حفظ إعدادات ${formData.name}.`);
+        // Firmware only reads its conf in setup(), so the server resets the
+        // device after a save — unless it is busy/offline/renamed.
+        if (device?.sent) toast.info("تم إرسال إعادة التشغيل للجهاز لتطبيق الإعدادات.");
+        else if (device) toast.warning(DEVICE_REASONS[device.reason] ?? "لم يُعاد تشغيل الجهاز — أعد تشغيله يدويًا لتطبيق الإعدادات.");
       } else {
         await api.post("/ports", formData);
         toast.success(`تم إنشاء المنفذ ${formData.name}.`);
@@ -240,6 +318,7 @@ function Ports_settings_page() {
               port={port}
               hasScadaMap={Boolean(channelsByPort[port.name])}
               onEdit={() => openEdit(port)}
+              onDuplicate={() => openDuplicate(port)}
               onDelete={() => setPendingDelete(port)}
               onScada={() => setScadaTarget(port)}
             />
@@ -257,10 +336,12 @@ function Ports_settings_page() {
       )}
 
       <PortDialog
-        key={editing?.id ?? "new"}
+        key={editing ? `edit-${editing.id}` : duplicating ? `copy-${duplicating.id}` : "new"}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         port={editing}
+        source={duplicating}
+        copyName={duplicating ? suggestCopyName(duplicating.name, ports.map((p) => p.name)) : ""}
         onSubmit={handleSubmit}
       />
 
@@ -306,7 +387,10 @@ function SummaryRow({ label, value, warn = false }) {
   );
 }
 
-function PortCard({ port, hasScadaMap, onEdit, onDelete, onScada }) {
+function PortCard({ port, hasScadaMap, onEdit, onDuplicate, onDelete, onScada }) {
+  // Modbus framing/registers are never sent to a pulse device, so showing them
+  // (as "—" or stale values) only suggests they matter.
+  const isPulse = port.mode === "pulse";
   return (
     <div className="flex flex-col rounded-xl border bg-card p-5 elevate transition-shadow hover:elevate-lg">
       <div className="mb-4 flex items-center justify-between gap-2" dir="rtl">
@@ -323,6 +407,17 @@ function PortCard({ port, hasScadaMap, onEdit, onDelete, onScada }) {
       </div>
 
       <div className="space-y-4" dir="rtl">
+        {isPulse ? (
+          <section className="space-y-1.5">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+              <Cable className="size-3.5" />
+              الاتصال
+            </p>
+            <SummaryRow label="النمط" value={port.mode} />
+            <SummaryRow label="حجم النبضة (لتر)" value={port.litersPerPulse} />
+          </section>
+        ) : (
+          <>
         <section className="space-y-1.5">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
             <Cable className="size-3.5" />
@@ -330,7 +425,7 @@ function PortCard({ port, hasScadaMap, onEdit, onDelete, onScada }) {
           </p>
           {/* Raw, not `formatNumber` — a baud rate is an identifier, and a
               thousands separator turned 9600 into "9,600". */}
-          <SummaryRow label="النمط" value={port.mode} warn={port.mode !== "modbus"} />
+          <SummaryRow label="النمط" value={port.mode} warn={!["modbus", "pulse"].includes(port.mode)} />
           <SummaryRow label="Baudrate" value={port.baudrate} />
           <SummaryRow label="الإطار" value={port.serialFrame} />
           <SummaryRow label="Slave ID" value={port.slaveId} />
@@ -349,6 +444,8 @@ function PortCard({ port, hasScadaMap, onEdit, onDelete, onScada }) {
           <SummaryRow label="عنوان السجل" value={port.registerAddress} />
           <SummaryRow label="عنوان التدفق" value={port.flowRateAddress} />
         </section>
+          </>
+        )}
 
         <section className="space-y-1.5 border-t pt-3">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
@@ -358,10 +455,11 @@ function PortCard({ port, hasScadaMap, onEdit, onDelete, onScada }) {
           <SummaryRow
             label="النوع"
             value={port.valveType}
-            warn={Boolean(port.valveType) && !VALVE_TYPES.includes(port.valveType)}
+            warn={Boolean(port.valveType) && !VALVE_TYPES.includes(normalizeValve(port.valveType))}
           />
           <SummaryRow label="زمن الإغلاق الأول" value={port.firstCloseTime} />
           <SummaryRow label="زمن PID" value={port.pidTime} />
+          {isPulse && <SummaryRow label="كمية بدء الغلق الأخير" value={port.thirdCloseLag} />}
         </section>
       </div>
 
@@ -369,6 +467,15 @@ function PortCard({ port, hasScadaMap, onEdit, onDelete, onScada }) {
         <Button variant="outline" size="sm" className="flex-1" onClick={onEdit}>
           <Pencil className="size-4" />
           تعديل
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onDuplicate}
+          title="نسخ المنفذ"
+          aria-label="نسخ المنفذ"
+        >
+          <Copy className="size-4" />
         </Button>
         <Button
           variant="outline"
@@ -393,10 +500,19 @@ function PortCard({ port, hasScadaMap, onEdit, onDelete, onScada }) {
   );
 }
 
-function PortDialog({ open, onOpenChange, port, onSubmit }) {
+function PortDialog({ open, onOpenChange, port, source, copyName, onSubmit }) {
   const isEdit = Boolean(port);
-  const [formData, setFormData] = useState(() => ({ ...EMPTY_FORM, ...(port ?? {}) }));
+  const [formData, setFormData] = useState(() => {
+    if (port) return { ...EMPTY_FORM, ...port, valveType: normalizeValve(port.valveType ?? "") };
+    if (!source) return { ...EMPTY_FORM };
+    // Copy only the editable settings — never the id/timestamps — and let the
+    // operator confirm a fresh, unique name.
+    const copied = Object.fromEntries(Object.keys(EMPTY_FORM).map((k) => [k, source[k] ?? EMPTY_FORM[k]]));
+    return { ...copied, name: copyName };
+  });
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+  const isPulse = formData.mode === "pulse";
 
   const handleChange = (event) => {
     const { name, value, type } = event.target;
@@ -408,6 +524,14 @@ function PortDialog({ open, onOpenChange, port, onSubmit }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    // The server stores these as-is but silently refuses to build the device
+    // conf from bad values, so they are checked here before saving.
+    const problem = pulseProblem(formData);
+    if (problem) {
+      setFormError(problem);
+      return;
+    }
+    setFormError("");
     setSubmitting(true);
     // Baudrate arrives from a <select>, so it is a string until coerced here.
     await onSubmit({ ...formData, baudrate: Number(formData.baudrate) || "" });
@@ -418,11 +542,17 @@ function PortDialog({ open, onOpenChange, port, onSubmit }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir="rtl" className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{isEdit ? `تعديل المنفذ ${port.name}` : "إنشاء منفذ جديد"}</DialogTitle>
+          <DialogTitle>{isEdit
+              ? `تعديل المنفذ ${port.name}`
+              : source
+                ? `نسخ المنفذ ${source.name}`
+                : "إنشاء منفذ جديد"}</DialogTitle>
           <DialogDescription>
             {isEdit
               ? "عدّل إعدادات الاتصال والتوقيت ثم احفظ التغييرات."
-              : "أدخل إعدادات المنفذ الجديد ليظهر في شاشة المشغل."}
+              : source
+                ? "تم نسخ كل الإعدادات — غيّر الاسم (وأي قيمة مختلفة) ثم احفظ."
+                : "أدخل إعدادات المنفذ الجديد ليظهر في شاشة المشغل."}
           </DialogDescription>
         </DialogHeader>
 
@@ -446,6 +576,7 @@ function PortDialog({ open, onOpenChange, port, onSubmit }) {
             </legend>
 
             <div className="grid gap-3 sm:grid-cols-3">
+              {!isPulse && (
               <div className="space-y-2">
                 <Label htmlFor="port-baudrate">معدل البيانات</Label>
                 <select
@@ -466,6 +597,7 @@ function PortDialog({ open, onOpenChange, port, onSubmit }) {
                   ))}
                 </select>
               </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="port-mode">نمط القراءة</Label>
@@ -483,13 +615,14 @@ function PortDialog({ open, onOpenChange, port, onSubmit }) {
                     </option>
                   ))}
                 </select>
-                {formData.mode !== "modbus" && (
+                {!["modbus", "pulse"].includes(formData.mode) && (
                   <p className="text-xs text-warning">
-                    الخادم لا يرسل إعدادات (conf) إلا لمنافذ modbus.
+                    الخادم لا يرسل إعدادات (conf) إلا لمنافذ modbus و pulse.
                   </p>
                 )}
               </div>
 
+              {!isPulse && (
               <div className="space-y-2">
                 <Label htmlFor="port-serialFrame">إطار البيانات</Label>
                 <select
@@ -513,7 +646,9 @@ function PortDialog({ open, onOpenChange, port, onSubmit }) {
                     )}
                 </select>
               </div>
+              )}
 
+              {!isPulse && (
               <div className="space-y-2">
                 <Label htmlFor="port-endian">ترتيب البايت</Label>
                 <select
@@ -538,7 +673,9 @@ function PortDialog({ open, onOpenChange, port, onSubmit }) {
                     )}
                 </select>
               </div>
+              )}
 
+              {!isPulse && (
               <div className="space-y-2">
                 <Label htmlFor="port-registerType">نوع السجل</Label>
                 <select
@@ -556,8 +693,10 @@ function PortDialog({ open, onOpenChange, port, onSubmit }) {
                   <option value="holding">Holding</option>
                 </select>
               </div>
+              )}
 
-              {CONNECTION_FIELDS.map((field) => (
+              {!isPulse &&
+                CONNECTION_FIELDS.map((field) => (
                 <div key={field.name} className="space-y-2">
                   <Label htmlFor={`port-${field.name}`}>{field.label}</Label>
                   <Input
@@ -572,6 +711,25 @@ function PortDialog({ open, onOpenChange, port, onSubmit }) {
                   />
                 </div>
               ))}
+
+              {isPulse && (
+                <div className="space-y-2">
+                  <Label htmlFor="port-litersPerPulse">
+                    حجم النبضة
+                    <span className="text-muted-foreground"> (لتر/نبضة)</span>
+                  </Label>
+                  <Input
+                    id="port-litersPerPulse"
+                    type="number"
+                    name="litersPerPulse"
+                    min={0}
+                    step="any"
+                    value={formData.litersPerPulse}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              )}
             </div>
           </fieldset>
 
@@ -634,7 +792,7 @@ function PortDialog({ open, onOpenChange, port, onSubmit }) {
                 </div>
               ))}
 
-              {CLOSE_LAG_FIELDS.map((field) => (
+              {(isPulse ? [...CLOSE_LAG_FIELDS, THIRD_LAG_FIELD] : CLOSE_LAG_FIELDS).map((field) => (
                 <div key={field.name} className="space-y-2">
                   <Label htmlFor={`port-${field.name}`}>
                     {field.label}
@@ -659,6 +817,12 @@ function PortDialog({ open, onOpenChange, port, onSubmit }) {
               المتبقية باللتر التي تبدأ عندها المرحلة.
             </p>
           </fieldset>
+
+          {formError && (
+            <p role="alert" className="text-sm text-destructive">
+              {formError}
+            </p>
+          )}
 
           <DialogFooter className="sm:justify-start">
             <Button type="submit" disabled={submitting}>

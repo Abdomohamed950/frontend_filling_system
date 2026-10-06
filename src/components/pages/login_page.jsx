@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Droplets, Eye, EyeOff, Loader2, Lock, ShieldAlert, User } from "lucide-react";
 import logo from "../img/logo.png";
@@ -10,6 +10,10 @@ import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/context/toast-context";
 import { useSocketStatus } from "@/hooks/use-socket";
 import ThemeToggle from "../custom_ui/theme_toggle";
+import { isDevMode, setDevMode } from "@/lib/dev-mode";
+
+const LOGO_TAPS_REQUIRED = 5;
+const LOGO_TAP_GAP_MS = 1500;
 
 function Login_page() {
   const navigate = useNavigate();
@@ -27,6 +31,25 @@ function Login_page() {
   useEffect(() => {
     if (isAuthenticated) navigate(homeFor(user.role), { replace: true });
   }, [isAuthenticated, user, homeFor, navigate]);
+
+  // Tapping the logo 5 times in a row (each tap within 1.5s of the last) toggles dev mode.
+  const logoTaps = useRef({ count: 0, last: 0 });
+  const handleLogoClick = () => {
+    const now = Date.now();
+    const taps = logoTaps.current;
+    taps.count = now - taps.last > LOGO_TAP_GAP_MS ? 1 : taps.count + 1;
+    taps.last = now;
+
+    if (taps.count >= LOGO_TAPS_REQUIRED) {
+      taps.count = 0;
+      if (isDevMode()) {
+        toast.info("وضع المطور مفعّل بالفعل.");
+        return;
+      }
+      setDevMode(true);
+      toast.success("أنت الآن في وضع المطور (Dev Mode).");
+    }
+  };
 
   const update = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
@@ -65,7 +88,13 @@ function Login_page() {
         </div>
 
         <div className="mx-auto w-full max-w-md animate-in-up" dir="rtl">
-          <img src={logo} alt="شعار المحطة" className="mb-8 h-16 w-auto object-contain" />
+          <img
+            src={logo}
+            alt="شعار المحطة"
+            onClick={handleLogoClick}
+            draggable={false}
+            className="mb-8 h-16 w-auto select-none object-contain"
+          />
 
           <h1 className="text-3xl font-bold tracking-tight">تسجيل الدخول</h1>
           <p className="mt-2 text-sm text-muted-foreground">

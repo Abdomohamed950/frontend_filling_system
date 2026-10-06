@@ -7,6 +7,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { socket, samePort } from "@/lib/socket";
 import { useSocketEvent } from "@/hooks/use-socket";
+import { BLOCK_REASONS, PHASE_LABELS, cycleActive, useDevModeStatus } from "@/lib/dev-mode";
 import { useToast } from "@/context/toast-context";
 import { useAuth } from "@/context/auth-context";
 import { formatDuration, toOperatorId } from "@/lib/format";
@@ -24,21 +25,22 @@ const FILLING_STATES = new Set(["filling"]);
 const STOPPED_STATES = new Set(["stop", "emergency_stop"]);
 
 const STATUS = {
-  waiting: { label: "بانتظار البيانات", variant: "muted", dot: "bg-muted-foreground" },
-  offline: { label: "غير متصل", variant: "destructive", dot: "bg-destructive" },
-  idle: { label: "جاهز", variant: "success", dot: "bg-success" },
-  checking: { label: "جارٍ التحقق من الإيصال", variant: "info", dot: "bg-info" },
-  filling: { label: "جارٍ التعبئة", variant: "info", dot: "bg-info" },
-  opening: { label: "فتح الصمام", variant: "warning", dot: "bg-warning" },
-  closing: { label: "غلق الصمام", variant: "warning", dot: "bg-warning" },
-  stopping: { label: "جارٍ الإيقاف", variant: "warning", dot: "bg-warning" },
-  emergency: { label: "إيقاف طارئ", variant: "destructive", dot: "bg-destructive" },
+  waiting: { label: "بانتظار البيانات", variant: "muted" },
+  offline: { label: "غير متصل", variant: "destructive" },
+  idle: { label: "جاهز", variant: "success" },
+  checking: { label: "جارٍ التحقق من الإيصال", variant: "info" },
+  filling: { label: "جارٍ التعبئة", variant: "info" },
+  opening: { label: "فتح الصمام", variant: "warning" },
+  closing: { label: "غلق الصمام", variant: "warning" },
+  stopping: { label: "جارٍ الإيقاف", variant: "warning" },
+  emergency: { label: "إيقاف طارئ", variant: "destructive" },
 };
 
 /** Server-reported outcomes of a `check_receipt` scan (see `receipt_check_result`). */
 const RECEIPT_MESSAGES = {
   already_used: "الإيصال مستخدم بالفعل.",
   not_found: "الإيصال غير موجود.",
+  trips_exhausted: "الشاحنة وصلت للحد الأقصى من النقلات.",
   crisis_blocked: "تم ملء هذه السيارة مرة في وضع الأزمات اليوم.",
   error: "حدث خطأ غير متوقع أثناء التحقق من الإيصال.",
 };
@@ -53,6 +55,9 @@ function normalizeValveState(raw) {
   if (value.startsWith("closing")) return "closing";
   return value;
 }
+
+/** Name of the port card the operator last focused — see `dev_plate` below. */
+let lastTouchedPort = null;
 
 function Op_Port({ name, mode = "barcode", onStatsChange }) {
   const toast = useToast();
@@ -83,6 +88,12 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
   // whichever port is actually waiting on a scan claim the result; it is a
   // best-effort match that assumes one barcode check in flight at a time.
   const awaitingCheckRef = useRef(false);
+
+  // Dev mode swaps the start control for the automatic cycle (car moves under
+  // the port, plate is read, quantity is filled in, fill starts).
+  const devEnabled = useDevModeStatus() === true;
+  const [cycle, setCycle] = useState(null);
+  const cycleRunning = devEnabled && cycleActive(cycle);
 
   const [fields, setFields] = useState({
     truckNumber: "",
@@ -241,7 +252,25 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
       return;
     }
 
-    toast.error(`${RECEIPT_MESSAGES[status] ?? "تعذر التحقق من الإيصال."} (${name})`);
+    const detail =
+      status === "trips_exhausted" && data?.message
+        ? data.message
+        : (RECEIPT_MESSAGES[status] ?? "تعذر التحقق من الإيصال.");
+    toast.error(`${detail} (${name})`);
+  });
+
+  useSocketEvent("dev_cycle", (data) => {
+    if (samePort(data?.port, name)) setCycle(data);
+  });
+
+  // A registered truck that used up its trips is refused by `start_filling`:
+  // `{ port, reason, plate, tripsDone, maxTrips }`, sent to the sender only.
+  useSocketEvent("start_blocked", (data) => {
+    if (!samePort(data?.port, name)) return;
+    const counts = data.maxTrips != null ? ` (${data.tripsDone}/${data.maxTrips})` : "";
+    toast.error(
+      `${RECEIPT_MESSAGES[data.reason] ?? "تم رفض بدء التعبئة."}${data.plate ? ` — ${data.plate}` : ""}${counts} (${name})`
+    );
   });
 
   // The read-out is only shown while a fill is running, so there is nothing
@@ -265,6 +294,18 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
     },
     [name]
   );
+
+  // `dev_plate` (dev mode camera) carries no port — the camera is shared — so
+  // the card the operator last touched claims it. The field is only filled,
+  // never submitted: the operator reviews the number before starting.
+  useSocketEvent("dev_plate", (data) => {
+    if (lastTouchedPort !== name || busy || checkingReceipt) return;
+    if (!data?.number) {
+      toast.warning("ما اتقرأش رقم السيارة، حاول تاني أو أدخله يدويًا.");
+      return;
+    }
+    handleFieldChange("truckNumber", String(data.number));
+  });
 
   /**
    * Triggered by pressing Enter in the receipt field — a scanner does this
@@ -355,7 +396,21 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
     toast.success(`تم إرسال أمر البدء اليدوي إلى ${name}.`);
   };
 
+  const startCycle = () => {
+    if (reportedOnline === false) {
+      toast.error(`المنفذ ${name} معطّل حاليًا حسب بوابة التشغيل.`);
+      return;
+    }
+    setCycle(null);
+    socket.emit("dev_start_cycle", { port: name });
+  };
+
   const stopFilling = () => {
+    if (cycleRunning && !filling) {
+      socket.emit("dev_cancel_cycle", { port: name });
+      setConfirmStop(false);
+      return;
+    }
     socket.emit("stop_filling", { port: name });
     setConfirmStop(false);
     toast.info(`تم إرسال أمر الإيقاف إلى ${name}.`);
@@ -375,18 +430,22 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
       {/* header */}
       <div className="flex shrink-0 items-center justify-between gap-2" dir="rtl">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="relative flex size-2.5 shrink-0">
-            {filling && (
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-info opacity-70" />
+          {/* Connection only — the badge beside it carries the port's state. */}
+          <span
+            role="img"
+            aria-label={available ? "متصل" : reportedOnline === false ? "غير متصل" : "بانتظار البيانات"}
+            title={available ? "متصل" : reportedOnline === false ? "غير متصل" : "بانتظار البيانات"}
+            className={cn(
+              "size-2.5 shrink-0 rounded-full",
+              available ? "bg-success" : reportedOnline === false ? "bg-destructive" : "bg-muted-foreground"
             )}
-            <span className={cn("relative inline-flex size-2.5 rounded-full", meta.dot)} />
-          </span>
+          />
           <h2 className="truncate text-base font-bold uppercase">{name}</h2>
         </div>
         <Badge variant={meta.variant}>{meta.label}</Badge>
       </div>
 
-      <div className="shrink-0">
+      <div className="shrink-0" onFocusCapture={() => (lastTouchedPort = name)}>
         <Port_data
           portName={name}
           truckNumber={fields.truckNumber}
@@ -434,7 +493,27 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
 
       {/* actions */}
       <div className="flex shrink-0 gap-2" dir="rtl">
-        {mode === "manual" && !busy && !checkingReceipt ? (
+        {devEnabled && !busy && !checkingReceipt && !cycleRunning ? (
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <Button type="button" className="w-full" onClick={startCycle}>
+              <Play className="size-4" />
+              ابدأ الدورة
+            </Button>
+            {cycle?.phase === "blocked" && (
+              <p role="alert" className="truncate text-center text-[11px] text-destructive">
+                {BLOCK_REASONS[cycle.reason] ?? PHASE_LABELS.blocked}
+              </p>
+            )}
+          </div>
+        ) : cycleRunning && !busy ? (
+          <div
+            role="status"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground"
+          >
+            <Loader2 className="size-4 animate-spin" />
+            {PHASE_LABELS[cycle.phase] ?? cycle.phase}
+          </div>
+        ) : mode === "manual" && !busy && !checkingReceipt ? (
           <Button
             type="button"
             variant="default"
@@ -469,7 +548,7 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
           variant="destructive"
           className="flex-1"
           onClick={() => setConfirmStop(true)}
-          disabled={!busy && !filling}
+          disabled={!busy && !filling && !cycleRunning}
         >
           <Square className="size-4" />
           توقف

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Brain, LogOut, PenLine, ScanBarcode, Wifi, WifiOff } from "lucide-react";
-import logo from "../img/logo.png";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
@@ -66,7 +65,6 @@ export default function Header({ showAiMode = true, mode = "barcode", onModeChan
     >
       <div className="flex items-center gap-3">
         <SidebarTrigger className="size-9" />
-        <img src={logo} alt="شعار المحطة" className="h-9 w-auto object-contain" />
         <Badge
           variant={connected ? "success" : "destructive"}
           className="hidden gap-1.5 sm:inline-flex"

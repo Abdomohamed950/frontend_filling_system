@@ -11,6 +11,8 @@ import Ports_settings_page from "./ports_settings_page";
 import Manage_operators_page from "./manage_operators_page";
 import Connection_settings_page from "./connection_settings_page";
 import Sync_settings_page from "./sync_settings_page";
+import Trucks_page from "./trucks_page";
+import Dev_mode_page from "./dev_mode_page";
 import Not_found_page from "./not_found_page";
 import { useSocketStatus } from "@/hooks/use-socket";
 
@@ -22,6 +24,8 @@ const TITLES = {
   operators: "المشغلون",
   connection_settings: "إعدادات الاتصال",
   sync_settings: "إعدادات المزامنة",
+  trucks: "الشاحنات",
+  dev_mode: "وضع المطور",
 };
 
 function Topbar() {
@@ -74,6 +78,8 @@ function Admin_page() {
             <Route path="operators" element={<Manage_operators_page />} />
             <Route path="connection_settings" element={<Connection_settings_page />} />
             <Route path="sync_settings" element={<Sync_settings_page />} />
+            <Route path="trucks" element={<Trucks_page />} />
+            <Route path="dev_mode" element={<Dev_mode_page />} />
             <Route path="*" element={<Not_found_page inline />} />
           </Routes>
         </div>

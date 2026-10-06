@@ -52,7 +52,7 @@ export default function AppSidebar({ rtl, setRtl, ports = [], onRefresh, aiMode 
         <img
           src={logo}
           alt="شعار المحطة"
-          className="h-10 w-auto object-contain transition-all group-data-[collapsible=icon]:h-7"
+          className="mx-auto h-35 w-auto max-w-full object-contain transition-all group-data-[collapsible=icon]:h-7"
         />
         <SidebarSeparator />
       </SidebarHeader>

@@ -9,6 +9,8 @@ import {
   RadioTower,
   ReceiptText,
   Settings,
+  Terminal,
+  Truck,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
@@ -27,6 +29,7 @@ import {
 import logo from "../img/logo.png";
 import ConfirmDialog from "./confirm_dialog";
 import { useAuth } from "@/context/auth-context";
+import { useDevUnlocked } from "@/lib/dev-mode";
 
 const SECTIONS = [
   {
@@ -41,12 +44,18 @@ const SECTIONS = [
     label: "الإعدادات",
     items: [
       { to: "/admin/ports_settings", icon: Settings, label: "إعدادات المنافذ" },
+      { to: "/admin/trucks", icon: Truck, label: "الشاحنات" },
       { to: "/admin/operators", icon: CircleUser, label: "المشغلون" },
       { to: "/admin/connection_settings", icon: Globe, label: "إعدادات الاتصال" },
       { to: "/admin/sync_settings", icon: RadioTower, label: "إعدادات المزامنة" },
     ],
   },
 ];
+
+const DEV_SECTION = {
+  label: "المطور",
+  items: [{ to: "/admin/dev_mode", icon: Terminal, label: "وضع المطور" }],
+};
 
 /**
  * Active state comes from the router via `NavLink`, replacing the
@@ -57,6 +66,8 @@ export default function Admin_sidebar() {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const devUnlocked = useDevUnlocked();
+  const sections = devUnlocked ? [...SECTIONS, DEV_SECTION] : SECTIONS;
 
   return (
     <Sidebar side="right" collapsible="icon" dir="rtl" className="no-print">
@@ -64,13 +75,13 @@ export default function Admin_sidebar() {
         <img
           src={logo}
           alt="شعار المحطة"
-          className="h-10 w-auto object-contain transition-all group-data-[collapsible=icon]:h-7"
+          className="mx-auto h-35 w-auto max-w-full object-contain transition-all group-data-[collapsible=icon]:h-7"
         />
         <SidebarSeparator />
       </SidebarHeader>
 
       <SidebarContent>
-        {SECTIONS.map((section) => (
+        {sections.map((section) => (
           <SidebarGroup key={section.label}>
             <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
             <SidebarGroupContent>
