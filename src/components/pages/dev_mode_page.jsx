@@ -24,6 +24,7 @@ const TURN_FIELDS = [
 const DEFAULT_SETTINGS = {
   camId: "cam1",
   camIndex: 0,
+  camBackend: "auto",
   plateDigits: 4,
   plateFrames: 5,
   roi: null,
@@ -31,6 +32,9 @@ const DEFAULT_SETTINGS = {
   arriveWaitMs: 5000,
   defaultQuantity: 10,
 };
+
+const DEFAULT_BACKENDS = ["auto", "v4l2", "avfoundation", "any"];
+const RESTART_HINT_MS = 4000;
 
 const ROI_KEYS = ["x", "y", "w", "h"];
 
@@ -40,6 +44,7 @@ function toForm(settings) {
   return {
     camId: settings.camId,
     camIndex: String(settings.camIndex),
+    camBackend: settings.camBackend ?? "auto",
     plateDigits: String(settings.plateDigits),
     plateFrames: String(settings.plateFrames),
     debugDir: settings.debugDir ?? "",
@@ -241,6 +246,8 @@ function CameraSection() {
   const [form, setForm] = useState(() => toForm(DEFAULT_SETTINGS));
   const [syncedSettings, setSyncedSettings] = useState(null);
   const [cameras, setCameras] = useState([]);
+  const [camInfo, setCamInfo] = useState({ platform: null, backend: null, backends: DEFAULT_BACKENDS });
+  const [restarting, setRestarting] = useState(false);
   const [reading, setReading] = useState(false);
   const [plate, setPlate] = useState(null);
 
@@ -252,7 +259,14 @@ function CameraSection() {
   useSocketEvent("dev_settings", (next) => {
     if (next) setSettings({ ...DEFAULT_SETTINGS, ...next });
   });
-  useSocketEvent("dev_cameras", (payload) => setCameras(payload?.cameras ?? []));
+  useSocketEvent("dev_cameras", (payload) => {
+    setCameras(payload?.cameras ?? []);
+    setCamInfo({
+      platform: payload?.platform ?? null,
+      backend: payload?.backend ?? null,
+      backends: payload?.backends?.length ? payload.backends : DEFAULT_BACKENDS,
+    });
+  });
   useSocketEvent("dev_plate", (payload) => {
     setReading(false);
     setPlate(payload ?? null);
@@ -265,6 +279,21 @@ function CameraSection() {
   }
 
   const set = (name) => (e) => setForm((f) => ({ ...f, [name]: e.target.value }));
+
+  // The server restarts the reader on any camera change; show it for a moment.
+  const flashRestarting = () => {
+    setRestarting(true);
+    setTimeout(() => setRestarting(false), RESTART_HINT_MS);
+  };
+
+  // The camera list depends on the backend, so apply it right away and re-list.
+  const changeBackend = (e) => {
+    const camBackend = e.target.value;
+    setForm((f) => ({ ...f, camBackend }));
+    socket.emit("dev_set_settings", { camBackend });
+    socket.emit("dev_list_cameras");
+    flashRestarting();
+  };
 
   const save = () => {
     let roi = null;
@@ -294,12 +323,14 @@ function CameraSection() {
       defaultQuantity,
       camId: form.camId.trim(),
       camIndex: Number(form.camIndex),
+      camBackend: form.camBackend,
       plateDigits: Number(form.plateDigits),
       plateFrames: Number(form.plateFrames),
       debugDir: form.debugDir.trim(),
       roi,
     });
     toast.success("تم إرسال إعدادات الكاميرا.");
+    flashRestarting();
   };
 
   const capture = () => {
@@ -320,7 +351,38 @@ function CameraSection() {
         </Button>
       </div>
 
+      {restarting && (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+          <Loader2 className="size-4 animate-spin" />
+          جاري إعادة تشغيل الكاميرا...
+        </p>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="space-y-1">
+          <Label htmlFor="camBackend">Camera backend</Label>
+          <select
+            id="camBackend"
+            dir="ltr"
+            value={form.camBackend}
+            onChange={changeBackend}
+            className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+          >
+            {!camInfo.backends.includes(form.camBackend) && (
+              <option value={form.camBackend}>{form.camBackend}</option>
+            )}
+            {camInfo.backends.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+          {camInfo.backend && (
+            <p className="text-xs text-muted-foreground">
+              الفعلي: <span dir="ltr" className="font-mono">{camInfo.backend}</span>
+            </p>
+          )}
+        </div>
         <div className="space-y-1">
           <Label htmlFor="camIndex">الكاميرا</Label>
           <select
@@ -330,7 +392,7 @@ function CameraSection() {
             className="h-9 w-full rounded-md border bg-background px-3 text-sm"
           >
             {!cameras.some((c) => String(c.index) === form.camIndex) && (
-              <option value={form.camIndex}>/dev/video{form.camIndex}</option>
+              <option value={form.camIndex}>Camera {form.camIndex}</option>
             )}
             {cameras.map((c) => (
               <option key={c.index} value={c.index}>
@@ -338,6 +400,11 @@ function CameraSection() {
               </option>
             ))}
           </select>
+          {camInfo.platform === "darwin" && (
+            <p className="text-xs text-muted-foreground">
+              على macOS لازم تسمح للـ Terminal بالوصول للكاميرا (System Settings ← Privacy &amp; Security ← Camera).
+            </p>
+          )}
         </div>
         <Field id="camId" label="اسم الكاميرا (camId)" value={form.camId} onChange={set("camId")} />
         <Field
