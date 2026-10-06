@@ -320,6 +320,19 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
   const submitCheckReceipt = () => {
     const { truckNumber, receiptNumber, requiredQuantity } = fields;
 
+    // Dev mode: a scan kicks off the automatic cycle instead of a receipt
+    // check — the truck number comes from the camera, not the field.
+    if (devEnabled) {
+      if (busy || cycleRunning) return;
+      if (!String(receiptNumber).trim()) {
+        toast.warning("امسح الباركود لبدء الدورة.");
+        return;
+      }
+      handleFieldChange("receiptNumber", "");
+      startCycle();
+      return;
+    }
+
     if (reportedOnline === false) {
       toast.error(`المنفذ ${name} معطّل حاليًا حسب بوابة التشغيل.`);
       return;
@@ -452,7 +465,7 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
           receiptNumber={fields.receiptNumber}
           requiredQuantity={fields.requiredQuantity}
           onFieldChange={handleFieldChange}
-          disableFields={busy || checkingReceipt}
+          disableFields={busy || checkingReceipt || cycleRunning}
           actualQuantity={actualQuantity}
           flowMeter={flowMeter}
           maxQuantity={MAX_QUANTITY}
