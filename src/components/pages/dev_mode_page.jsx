@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
   debugDir: "",
   arriveWaitMs: 5000,
   defaultQuantity: 10,
+  loopDelaySec: 10,
 };
 
 const DEFAULT_BACKENDS = ["auto", "v4l2", "avfoundation", "any"];
@@ -50,6 +51,7 @@ function toForm(settings) {
     debugDir: settings.debugDir ?? "",
     arriveWaitMs: String(settings.arriveWaitMs),
     defaultQuantity: String(settings.defaultQuantity),
+    loopDelaySec: String(settings.loopDelaySec),
     useRoi: Boolean(settings.roi),
     roi: ROI_KEYS.reduce((acc, k) => ({ ...acc, [k]: String(settings.roi?.[k] ?? "") }), {}),
   };
@@ -318,9 +320,15 @@ function CameraSection() {
       toast.error("الكمية الافتراضية لازم تكون أكبر من 0 وأقل من 100.");
       return;
     }
+    const loopDelaySec = Number(form.loopDelaySec);
+    if (form.loopDelaySec === "" || !(loopDelaySec >= 0 && loopDelaySec <= 3600)) {
+      toast.error("زمن الانتظار بين الدورات لازم يكون بين 0 و 3600 ثانية.");
+      return;
+    }
     socket.emit("dev_set_settings", {
       arriveWaitMs,
       defaultQuantity,
+      loopDelaySec,
       camId: form.camId.trim(),
       camIndex: Number(form.camIndex),
       camBackend: form.camBackend,
@@ -435,6 +443,14 @@ function CameraSection() {
           step="any"
           value={form.defaultQuantity}
           onChange={set("defaultQuantity")}
+        />
+        <Field
+          id="loopDelaySec"
+          label="الانتظار بين الدورات في التشغيل الذكي (ثانية)"
+          type="number"
+          step="any"
+          value={form.loopDelaySec}
+          onChange={set("loopDelaySec")}
         />
         <Field
           id="debugDir"
