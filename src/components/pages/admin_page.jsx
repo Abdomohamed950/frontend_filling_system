@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Wifi, WifiOff } from "lucide-react";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "../ui/sidebar";
-import Admin_sidebar from "../custom_ui/admin_sidebar";
+import Admin_sidebar from "../custom_ui/admin-sidebar";
 import ThemeToggle from "../custom_ui/theme_toggle";
 import { Badge } from "../ui/badge";
 import History_page from "./history_page";
