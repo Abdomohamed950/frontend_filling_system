@@ -5,6 +5,7 @@ import Header from "../custom_ui/header.jsx";
 import Op_Port from "../custom_ui/op_port.jsx";
 import AppSidebar from "../custom_ui/app-sidebar.jsx";
 import StatCard from "../custom_ui/stat_card.jsx";
+import PumpsStatus from "../custom_ui/pumps_status.jsx";
 import { CardsSkeleton, EmptyState, ErrorState } from "../custom_ui/states.jsx";
 import { useApi } from "@/hooks/use-api";
 import { useSocketEvent } from "@/hooks/use-socket";
@@ -100,6 +101,18 @@ function Operator_page() {
     return names.length ? names : FALLBACK_PORTS;
   }, [data]);
 
+  // The pump panel only matters when some port is configured as
+  // "valve and bump" (the server also accepts the "pump" spelling).
+  const hasPumpPort = useMemo(
+    () =>
+      Array.isArray(data) &&
+      data.some((port) => {
+        const type = String(port?.valveType ?? "").trim().toLowerCase();
+        return type === "valve and bump" || type === "valve and pump";
+      }),
+    [data]
+  );
+
   const handleStatsChange = useCallback((name, stats) => {
     setPortStats((current) => {
       const previous = current[name];
@@ -186,6 +199,8 @@ function Operator_page() {
               loading={loading}
             />
           </div>
+
+          {hasPumpPort && <PumpsStatus className="shrink-0" />}
 
           <div className="min-h-0 flex-1">
             {loading && (
