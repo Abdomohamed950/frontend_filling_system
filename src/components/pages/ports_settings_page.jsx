@@ -210,7 +210,13 @@ function Ports_settings_page() {
   const [scadaTarget, setScadaTarget] = useState(null);
 
   const ports = useMemo(
-    () => (Array.isArray(data) ? data.filter((p) => typeof p === "object") : []),
+    () =>
+      (Array.isArray(data) ? data.filter((p) => p && typeof p === "object") : []).sort((a, b) =>
+        String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        })
+      ),
     [data]
   );
 

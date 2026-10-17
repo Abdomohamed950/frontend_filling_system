@@ -94,7 +94,10 @@ function Operator_page() {
 
   const ports = useMemo(() => {
     const names = Array.isArray(data)
-      ? data.map((port) => (typeof port === "string" ? port : port.name)).filter(Boolean)
+      ? data
+          .map((port) => (typeof port === "string" ? port : port.name))
+          .filter(Boolean)
+          .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" }))
       : [];
     // The gateway is the source of truth for telemetry; if the REST list is
     // unavailable we still render the default bank rather than nothing.
