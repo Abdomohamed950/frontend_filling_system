@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Play, ScanBarcode, Square } from "lucide-react";
+import { Loader2, Pause, Play, ScanBarcode, Square } from "lucide-react";
 import Tank from "./tank.jsx";
 import Port_data from "./port_data.jsx";
 import ConfirmDialog from "./confirm_dialog.jsx";
@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 const MAX_QUANTITY = 100;
 
 /** `state` values the device publishes on `<port>/state`. */
-const FILLING_STATES = new Set(["filling"]);
+const FILLING_STATES = new Set(["filling", "resumed"]);
 const STOPPED_STATES = new Set(["stop", "emergency_stop"]);
 
 const STATUS = {
@@ -30,6 +30,7 @@ const STATUS = {
   idle: { label: "جاهز", variant: "success" },
   checking: { label: "جارٍ التحقق من الإيصال", variant: "info" },
   filling: { label: "جارٍ التعبئة", variant: "info" },
+  paused: { label: "إيقاف مؤقت", variant: "warning" },
   opening: { label: "فتح الصمام", variant: "warning" },
   closing: { label: "غلق الصمام", variant: "warning" },
   stopping: { label: "جارٍ الإيقاف", variant: "warning" },
@@ -79,6 +80,9 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
   const [actualQuantity, setActualQuantity] = useState(0);
   const [startedAt, setStartedAt] = useState(null);
   const [stopping, setStopping] = useState(false);
+  const [paused, setPaused] = useState(false);
+  // Pause is refused once the device reaches `closing_second`/`closing_final`.
+  const [closingLate, setClosingLate] = useState(false);
   const [emergency, setEmergency] = useState(false);
   const [elapsed, setElapsed] = useState("—");
   const [confirmStop, setConfirmStop] = useState(false);
@@ -127,7 +131,9 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
       : "waiting"
     : emergency
       ? "emergency"
-      : stopping
+      : paused
+        ? "paused"
+        : stopping
         ? "stopping"
         : valveState === "opening" || valveState === "closing"
           ? valveState
@@ -153,8 +159,17 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
     setHasTelemetry(true);
     const next = String(data.data ?? "");
 
+    if (next === "paused") {
+      setBusy(true);
+      setPaused(true);
+      setStopping(false);
+      setStartedAt((current) => current ?? Date.now());
+      return;
+    }
+
     if (FILLING_STATES.has(next)) {
       setBusy(true);
+      setPaused(false);
       setStopping(false);
       setEmergency(false);
       setStartedAt((current) => current ?? Date.now());
@@ -169,6 +184,8 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
 
     if (STOPPED_STATES.has(next)) {
       setBusy(false);
+      setPaused(false);
+      setClosingLate(false);
       setStopping(false);
       setStartedAt(null);
 
@@ -207,9 +224,39 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
     }
   });
 
+  useSocketEvent("history_paused", (data) => {
+    if (!samePort(data.port, name)) return;
+    setBusy(true);
+    setPaused(true);
+  });
+
+  useSocketEvent("history_resumed", (data) => {
+    if (!samePort(data.port, name)) return;
+    setBusy(true);
+    setPaused(false);
+  });
+
+  useSocketEvent("history_closed", (data) => {
+    if (!samePort(data.port, name)) return;
+    setPaused(false);
+    setClosingLate(false);
+  });
+
+  useSocketEvent("pause_rejected", (data) => {
+    if (!samePort(data?.port, name)) return;
+    if (data.reason === "closing_stage") {
+      setClosingLate(true);
+      toast.warning("مينفعش إيقاف مؤقت في مرحلة الإغلاق");
+    } else if (data.reason === "already_paused") {
+      setPaused(true);
+    }
+  });
+
   useSocketEvent("valve_state", (data) => {
     if (!samePort(data.port, name)) return;
     setHasTelemetry(true);
+    const raw = String(data.raw ?? data.data ?? "");
+    setClosingLate(raw === "closing_second" || raw === "closing_final");
     const next = normalizeValveState(data.data);
     setValveState(next);
     setFilling(next !== "close");
@@ -378,7 +425,7 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
    * window (see API.md §8.1).
    */
   const submitManualStart = () => {
-    const { truckNumber, requiredQuantity } = fields;
+    const { truckNumber, receiptNumber, requiredQuantity } = fields;
 
     if (reportedOnline === false) {
       toast.error(`المنفذ ${name} معطّل حاليًا حسب بوابة التشغيل.`);
@@ -404,6 +451,7 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
       required_quantity: quantity,
       truck_number: truckNumber,
       operator_id: operatorId,
+      ...(String(receiptNumber).trim() ? { receipt_number: String(receiptNumber).trim() } : {}),
     });
     toast.success(`تم إرسال أمر البدء اليدوي إلى ${name}.`);
   };
@@ -430,6 +478,9 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
     setConfirmStop(false);
     toast.info(`تم إرسال أمر الإيقاف إلى ${name}.`);
   };
+
+  const pauseFilling = () => socket.emit("pause_filling", { port: name });
+  const resumeFilling = () => socket.emit("resume_filling", { port: name });
 
   const meta = STATUS[status];
 
@@ -557,6 +608,18 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
               </>
             )}
           </div>
+        )}
+        {busy && (
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={paused ? resumeFilling : pauseFilling}
+            disabled={!available || (!paused && (closingLate || stopping))}
+          >
+            {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
+            {paused ? "استئناف" : "إيقاف مؤقت"}
+          </Button>
         )}
         <Button
           type="button"

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, Droplets, PlugZap, Radio } from "lucide-react";
+import { Activity, Droplets, PlugZap, User } from "lucide-react";
 import { SidebarInset, SidebarProvider } from "../ui/sidebar";
 import Header from "../custom_ui/header.jsx";
 import Op_Port from "../custom_ui/op_port.jsx";
@@ -10,7 +10,8 @@ import { CardsSkeleton, EmptyState, ErrorState } from "../custom_ui/states.jsx";
 import { useApi } from "@/hooks/use-api";
 import { useSocketEvent } from "@/hooks/use-socket";
 import { socket } from "@/lib/socket";
-import { formatNumber } from "@/lib/format";
+import { formatNumber, toOperatorId, toSqlTimestamp } from "@/lib/format";
+import { useAuth } from "@/context/auth-context";
 import { cn } from "@/lib/utils";
 
 /** Used until the backend answers, so the panel is never a blank screen. */
@@ -22,12 +23,6 @@ const FALLBACK_PORTS = ["port1", "port2", "port3", "port4", "port5"];
  */
 const PORT_MIN_WIDTH = "13rem";
 
-const MODE_LABELS = {
-  ai: "ذكاء اصطناعي",
-  barcode: "باركود",
-  manual: "يدوي",
-};
-
 function Operator_page() {
   const [rtl, setRtl] = useState(() => localStorage.getItem("fs-port-rtl") !== "0");
   const [portStats, setPortStats] = useState({});
@@ -38,11 +33,34 @@ function Operator_page() {
   const [manualPreference, setManualPreference] = useState(
     () => localStorage.getItem("fs-op-mode") === "manual"
   );
-  // Running total of *finished* fills this console has been open for. Kept
-  // apart from the live per-port `actualQuantity` (which each Op_Port resets
-  // to 0 at the start of its next fill) so the session total keeps climbing
-  // instead of dipping back to zero every time a port starts a new fill.
-  const [closedDispensed, setClosedDispensed] = useState(0);
+  const { user } = useAuth();
+  const operatorId = toOperatorId(user);
+
+  // Today's closed fills from the gateway — the source for both the
+  // all-users total and the current operator's own total. Bounds are local
+  // wall-clock strings (see `toSqlTimestamp`).
+  const [dayKey, setDayKey] = useState(() => new Date().toDateString());
+  const todayParams = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 0);
+    return { port: "all_ports", from: toSqlTimestamp(start), to: toSqlTimestamp(end) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayKey]);
+  const { data: todayLogs, refetch: refetchToday } = useApi("/history", {
+    params: todayParams,
+    fallback: [],
+  });
+
+  // Roll the range over at midnight.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date().toDateString();
+      setDayKey((current) => (current === now ? current : now));
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const { data, loading, error, refetch } = useApi("/ports", { fallback: [] });
 
@@ -70,23 +88,10 @@ function Operator_page() {
     [aiMode]
   );
 
-  // Server-authoritative close of a fill (meter-based, from fillingSessions.js)
-  // — folded into the running total once and never again for that fill.
-  useSocketEvent("history_closed", (data) => {
-    const qty = Number(data?.record?.actualQuantity);
-    if (Number.isFinite(qty)) setClosedDispensed((total) => total + qty);
-  });
-
-  // A fill that completed while the gateway was disconnected never emits
-  // `history_closed` — the device only reports it once reconnected, as a
-  // complete record recovered from its own `logdata` (see API.md §8.2). It
-  // is just as closed as any other fill and must count here too, or the
-  // session total silently underreports every dispense that happened during
-  // an outage.
-  useSocketEvent("history_offline", (data) => {
-    const qty = Number(data?.record?.actualQuantity);
-    if (Number.isFinite(qty)) setClosedDispensed((total) => total + qty);
-  });
+  // A finished fill (online `history_closed`, or `history_offline` recovered
+  // after an outage) changes today's totals — re-read them from the server.
+  useSocketEvent("history_closed", refetchToday);
+  useSocketEvent("history_offline", refetchToday);
 
   useEffect(() => {
     localStorage.setItem("fs-port-rtl", rtl ? "1" : "0");
@@ -131,22 +136,32 @@ function Operator_page() {
     });
   }, []);
 
+  const dispensedToday = useMemo(() => {
+    const rows = Array.isArray(todayLogs) ? todayLogs : [];
+    let all = 0;
+    let mine = 0;
+    for (const row of rows) {
+      const qty = Number(row?.actualQuantity) || 0;
+      all += qty;
+      if (operatorId !== null && Number(row?.operatorId) === operatorId) mine += qty;
+    }
+    return { all, mine };
+  }, [todayLogs, operatorId]);
+
   const summary = useMemo(() => {
     const entries = ports.map((name) => portStats[name]).filter(Boolean);
-    // Only a port still actively "filling" contributes its live count — once
-    // it starts stopping/closing, `history_closed` is the source of truth
-    // for that fill's final amount (folded into `closedDispensed` instead),
-    // avoiding a stretch of double-counting between "fill looks done here"
-    // and "the device actually confirmed it's done".
+    // Only a port still actively "filling" adds its live count; once it
+    // closes, `history_closed` triggers a refetch that includes the final
+    // amount, so nothing is counted twice.
     const liveDispensing = entries
       .filter((entry) => entry.status === "filling")
       .reduce((total, entry) => total + (entry.actualQuantity || 0), 0);
     return {
       online: entries.filter((entry) => entry.available).length,
       filling: entries.filter((entry) => entry.status === "filling").length,
-      dispensed: closedDispensed + liveDispensing,
+      dispensed: dispensedToday.all + liveDispensing,
     };
-  }, [ports, portStats, closedDispensed]);
+  }, [ports, portStats, dispensedToday]);
 
   return (
     // `min-h-svh` on the provider's wrapper would still let the page grow;
@@ -187,17 +202,17 @@ function Operator_page() {
             />
             <StatCard
               icon={Droplets}
-              label="المنصرف في الجلسة"
+              label="المنصرف اليوم (كل المستخدمين)"
               value={formatNumber(summary.dispensed, 2)}
               unit="وحدة"
               compact
               loading={loading}
             />
             <StatCard
-              icon={Radio}
-              label="وضع التشغيل"
-              value={MODE_LABELS[mode]}
-              tone={mode === "ai" ? "info" : mode === "manual" ? "warning" : "muted"}
+              icon={User}
+              label="منصرف اليوم (أنا)"
+              value={formatNumber(dispensedToday.mine, 2)}
+              unit="وحدة"
               compact
               loading={loading}
             />

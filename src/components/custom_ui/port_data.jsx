@@ -85,10 +85,21 @@ export default function Port_data(props) {
         disabled={disableFields}
         placeholder="—"
       />
-      {/* Manual mode starts a fill straight from the required-quantity field
-          below plus a start button — no barcode involved, so the scan field
-          would just sit there unused. */}
-      {mode !== "manual" && (
+      {mode === "manual" ? (
+        // Manual mode starts from the start button, so the field is a plain
+        // text entry (no scan/Enter trigger) and the receipt is optional.
+        <Field
+          id={`${portName}-receipt`}
+          icon={ScanBarcode}
+          label="رقم الإيصال"
+          value={receiptNumber}
+          onChange={(value) => onFieldChange("receiptNumber", value)}
+          disabled={disableFields}
+          placeholder="—"
+          type="text"
+          inputMode="text"
+        />
+      ) : (
         <Field
           id={`${portName}-receipt`}
           icon={ScanBarcode}
