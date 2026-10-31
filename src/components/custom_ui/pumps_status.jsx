@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Fan, Wifi, WifiOff } from "lucide-react";
 import { useSocketEvent } from "@/hooks/use-socket";
+import { socket } from "@/lib/socket";
 import { cn } from "@/lib/utils";
 
 const PUMPS = [
@@ -13,6 +14,10 @@ const PUMPS = [
  * (`bumpbroker/availability`, `pump1/running`, `pump2/running`) as a single
  * `pumps_status` socket event: `{ availability, pump1, pump2 }`.
  * Partial payloads are merged. Only render this while a port is filling.
+ *
+ * Retained messages reach the gateway once, so a late-mounted panel would miss
+ * them. It therefore asks for the current snapshot (`get_pumps_status`) on
+ * mount and on every socket (re)connect.
  */
 export default function PumpsStatus({ className }) {
   const [state, setState] = useState({ availability: null, pump1: null, pump2: null });
@@ -22,6 +27,17 @@ export default function PumpsStatus({ className }) {
     setState((current) => ({ ...current, ...payload }));
   });
 
+  useEffect(() => {
+    const request = () => socket.emit("get_pumps_status");
+    if (socket.connected) request();
+    socket.on("connect", request);
+    return () => {
+      socket.off("connect", request);
+    };
+  }, []);
+
+  // `null` = no message received yet; that is "checking", not "offline".
+  const checking = state.availability === null || state.availability === undefined;
   const online = String(state.availability).toLowerCase() === "online";
 
   return (
@@ -29,11 +45,15 @@ export default function PumpsStatus({ className }) {
       <span
         className={cn(
           "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium",
-          online ? "bg-success/12 text-success" : "bg-destructive/12 text-destructive"
+          checking
+            ? "bg-muted text-muted-foreground"
+            : online
+              ? "bg-success/12 text-success"
+              : "bg-destructive/12 text-destructive"
         )}
       >
         {online ? <Wifi className="size-4" /> : <WifiOff className="size-4" />}
-        Pump Broker: {online ? "متصل" : "غير متصل"}
+        Pump Broker: {checking ? "جاري التحقق" : online ? "متصل" : "غير متصل"}
       </span>
 
       {PUMPS.map(({ key, label }) => {
