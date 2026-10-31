@@ -615,7 +615,8 @@ function Op_Port({ name, mode = "barcode", onStatsChange }) {
             variant="outline"
             className="flex-1"
             onClick={paused ? resumeFilling : pauseFilling}
-            disabled={!available || (!paused && (closingLate || stopping))}
+            // TEMP: pause restrictions removed for testing
+            disabled={false}
           >
             {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
             {paused ? "استئناف" : "إيقاف مؤقت"}
