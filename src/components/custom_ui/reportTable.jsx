@@ -60,16 +60,16 @@ export default function ReportTable({ reports, totals }) {
                 </Badge>
               </TableCell>
               <TableCell className="text-center tabular-nums">
-                {formatNumber(record.startmeter, 2)}
+                {formatNumber(record.startmeter, 3)}
               </TableCell>
               <TableCell className="text-center tabular-nums">
-                {formatNumber(record.endmeter, 2)}
+                {formatNumber(record.endmeter, 3)}
               </TableCell>
               <TableCell className="text-center font-semibold tabular-nums">
-                {formatNumber(record.metervalue, 2)}
+                {formatNumber(record.metervalue, 3)}
               </TableCell>
               <TableCell className="text-center tabular-nums">
-                {formatNumber(record.receiptvalue, 2)}
+                {formatNumber(record.receiptvalue, 3)}
               </TableCell>
               <TableCell
                 className={cn(
@@ -77,7 +77,7 @@ export default function ReportTable({ reports, totals }) {
                   Number(record.saving) > 0 && "font-semibold text-success"
                 )}
               >
-                {formatNumber(record.saving, 2)}
+                {formatNumber(record.saving, 3)}
               </TableCell>
               <TableCell
                 className={cn(
@@ -85,7 +85,7 @@ export default function ReportTable({ reports, totals }) {
                   Number(record.deficit) > 0 && "font-semibold text-destructive"
                 )}
               >
-                {formatNumber(record.deficit, 2)}
+                {formatNumber(record.deficit, 3)}
               </TableCell>
               <TableCell className="text-center tabular-nums">
                 {formatNumber(record.carcount)}
@@ -101,16 +101,16 @@ export default function ReportTable({ reports, totals }) {
               <TableCell className="text-center text-muted-foreground">—</TableCell>
               <TableCell className="text-center text-muted-foreground">—</TableCell>
               <TableCell className="text-center font-bold tabular-nums">
-                {formatNumber(totals.metervalue, 2)}
+                {formatNumber(totals.metervalue, 3)}
               </TableCell>
               <TableCell className="text-center font-bold tabular-nums">
-                {formatNumber(totals.receiptvalue, 2)}
+                {formatNumber(totals.receiptvalue, 3)}
               </TableCell>
               <TableCell className="text-center font-bold tabular-nums text-success">
-                {formatNumber(totals.saving, 2)}
+                {formatNumber(totals.saving, 3)}
               </TableCell>
               <TableCell className="text-center font-bold tabular-nums text-destructive">
-                {formatNumber(totals.deficit, 2)}
+                {formatNumber(totals.deficit, 3)}
               </TableCell>
               <TableCell className="text-center font-bold tabular-nums">
                 {formatNumber(totals.carcount)}

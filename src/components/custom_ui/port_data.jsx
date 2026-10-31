@@ -145,10 +145,10 @@ export default function Port_data(props) {
         <Readout
           icon={Hash}
           label="الكمية الفعلية"
-          value={formatNumber(actualQuantity, 2)}
+          value={formatNumber(actualQuantity, 3)}
           tone="primary"
         />
-        <Readout icon={Gauge} label="قراءة العداد" value={formatNumber(flowMeter, 2)} />
+        <Readout icon={Gauge} label="قراءة العداد" value={formatNumber(flowMeter, 3)} />
       </div>
     </div>
   );

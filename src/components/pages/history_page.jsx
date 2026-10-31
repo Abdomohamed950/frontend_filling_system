@@ -296,11 +296,11 @@ function History_page() {
           </span>
           <span>
             إجمالي المطلوب:{" "}
-            <strong className="tabular-nums">{formatNumber(totals.required, 2)}</strong>
+            <strong className="tabular-nums">{formatNumber(totals.required, 3)}</strong>
           </span>
           <span>
             إجمالي المنصرف:{" "}
-            <strong className="tabular-nums">{formatNumber(totals.actual, 2)}</strong>
+            <strong className="tabular-nums">{formatNumber(totals.actual, 3)}</strong>
           </span>
           <span className="text-muted-foreground">الفترة: {rangeLabel}</span>
         </div>

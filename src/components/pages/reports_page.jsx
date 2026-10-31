@@ -177,26 +177,26 @@ function Reports_page() {
         <StatCard
           icon={Droplets}
           label="المنصرف بالعداد"
-          value={formatNumber(totals.metervalue, 2)}
+          value={formatNumber(totals.metervalue, 3)}
           loading={loading}
         />
         <StatCard
           icon={Receipt}
           label="المنصرف بالإيصالات"
-          value={formatNumber(totals.receiptvalue, 2)}
+          value={formatNumber(totals.receiptvalue, 3)}
           loading={loading}
         />
         <StatCard
           icon={TrendingUp}
           label="إجمالي الوفر"
-          value={formatNumber(totals.saving, 2)}
+          value={formatNumber(totals.saving, 3)}
           tone="success"
           loading={loading}
         />
         <StatCard
           icon={TrendingDown}
           label="إجمالي العجز"
-          value={formatNumber(totals.deficit, 2)}
+          value={formatNumber(totals.deficit, 3)}
           tone="destructive"
           loading={loading}
         />

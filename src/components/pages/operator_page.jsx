@@ -203,7 +203,7 @@ function Operator_page() {
             <StatCard
               icon={Droplets}
               label="المنصرف اليوم (كل المستخدمين)"
-              value={formatNumber(summary.dispensed, 2)}
+              value={formatNumber(summary.dispensed, 3)}
               unit="وحدة"
               compact
               loading={loading}
@@ -211,7 +211,7 @@ function Operator_page() {
             <StatCard
               icon={User}
               label="منصرف اليوم (أنا)"
-              value={formatNumber(dispensedToday.mine, 2)}
+              value={formatNumber(dispensedToday.mine, 3)}
               unit="وحدة"
               compact
               loading={loading}

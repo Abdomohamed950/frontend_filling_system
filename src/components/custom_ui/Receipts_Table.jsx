@@ -108,7 +108,7 @@ export default function Receipts_Table({
                     {receipt.receiptNum ?? "—"}
                   </TableCell>
                   <TableCell className="text-center tabular-nums">
-                    {formatNumber(receipt.waterQuantity, 2)}
+                    {formatNumber(receipt.waterQuantity, 3)}
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge variant={used ? "muted" : "success"} className="gap-1">

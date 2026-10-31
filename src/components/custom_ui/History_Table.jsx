@@ -128,10 +128,10 @@ export default function History_Table({
                     {record.receiptNum ?? "—"}
                   </TableCell>
                   <TableCell className="text-center tabular-nums">
-                    {formatNumber(record.requiredQuantity, 2)}
+                    {formatNumber(record.requiredQuantity, 3)}
                   </TableCell>
                   <TableCell className="text-center font-semibold tabular-nums">
-                    {formatNumber(record.actualQuantity, 2)}
+                    {formatNumber(record.actualQuantity, 3)}
                   </TableCell>
                   <TableCell className="text-center">
                     {required ? (
@@ -143,7 +143,7 @@ export default function History_Table({
                         )}
                       >
                         {variance > 0 ? "+" : ""}
-                        {formatNumber(variance, 2)}
+                        {formatNumber(variance, 3)}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
